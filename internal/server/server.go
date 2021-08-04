@@ -196,14 +196,14 @@ func (s *Server) v1GetSingleConversation(c *gin.Context) {
 	s.teams.Debug(true)
 	s.teams.ChatSvc().DebugDisallowUnknownFields(true)
 
-	messages, err := s.teams.GetMessages(&csa.Channel{Id: convId})
+	chatMessages, err := s.teams.GetMessages(&csa.Channel{Id: convId})
 	if err != nil {
 		s.logger.Errorf("unable to get messages for convId=%s: %v", convId, err)
 		c.JSON(http.StatusInternalServerError, errors.ApiError{Message: "unable to get messages"})
 		return
 	}
 
-	pMessages := s.parseMessages(messages)
+	pMessages := s.parseMessages(chatMessages)
 	resp := v1.ConversationResponse{
 		Messages: pMessages,
 	}
@@ -219,6 +219,8 @@ func (s *Server) parseMessages(msgs []csa.ChatMessage) []v1.Message {
 	var pMessages []v1.Message
 	threads := map[string][]v1.Message{}
 	parentMessages := map[string]v1.Message{}
+
+	seenParent := map[string]bool{}
 
 	for _, m := range msgs {
 		msg := v1.Message{
@@ -254,8 +256,16 @@ func (s *Server) parseMessages(msgs []csa.ChatMessage) []v1.Message {
 			val.Replies = append(val.Replies, threadMessages...)
 			sort.Sort(bySequenceId(val.Replies))
 			pMessages = append(pMessages, val)
+			seenParent[threadId] = true
 		}
 	}
+
+	for k, msg := range parentMessages {
+		if _, ok := seenParent[k]; !ok {
+			pMessages = append(pMessages, msg)
+		}
+	}
+
 	sort.Sort(bySequenceId(pMessages))
 
 	return pMessages
