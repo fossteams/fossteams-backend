@@ -1,8 +1,6 @@
 package v1
 
-import (
-	"github.com/fossteams/teams-api/pkg"
-)
+import "github.com/fossteams/teams-api/pkg/models"
 
 type Conversations struct {
 	Chats []Chat `json:"chats"`
@@ -24,7 +22,7 @@ type Team struct {
 	Creator     string    `json:"creator"`
 	Id          string    `json:"id"`
 	DisplayName string    `json:"displayName"`
-	Channels    []Channel `json:"channels"'`
+	Channels    []Channel `json:"channels"`
 }
 
 type Channel struct {
@@ -44,24 +42,25 @@ type ChatMember struct {
 }
 
 type ShortMessage struct {
-	Id      string `json:"id"`
-	Content string `json:"content"`
-	From    string `json:"from"`
+	Id           string `json:"id"`
+	CleanContent string `json:"cleanContent"`
+	Content      string `json:"content"`
+	From         string `json:"from"`
 }
 
 type Message struct {
 	ShortMessage
-	ImDisplayName       string          `json:"imDisplayName"`
-	OriginalArrivalTime api.RFC3339Time `json:"originalArrivalTime"`
-	ConversationId      string          `json:"conversationId"`
-	ParentID            string          `json:"parentID"`
-	SequenceId          int64           `json:"sequenceId"`
-	MessageType         string          `json:"messageType"`
-	Type                string          `json:"type"`
-	Subject             string          `json:"subject,omitempty"`
-	Title               string          `json:"title,omitempty"`
-	Reactions           map[string]int  `json:"reactions,omitempty"`
-	Replies             []Message       `json:"replies,omitempty"`
+	ImDisplayName       string             `json:"imDisplayName"`
+	OriginalArrivalTime models.RFC3339Time `json:"originalArrivalTime"`
+	ConversationId      string             `json:"conversationId"`
+	ParentID            string             `json:"parentID"`
+	SequenceId          int64              `json:"sequenceId"`
+	MessageType         string             `json:"messageType"`
+	Type                string             `json:"type"`
+	Subject             string             `json:"subject,omitempty"`
+	Title               string             `json:"title,omitempty"`
+	Reactions           map[string]int     `json:"reactions,omitempty"`
+	Replies             []Message          `json:"replies,omitempty"`
 }
 
 type ConversationResponse struct {

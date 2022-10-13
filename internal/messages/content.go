@@ -25,7 +25,7 @@ func ParseMessageContent(content string) string {
 		switch tokenType {
 		case html.StartTagToken:
 			fmt.Printf("Start %s: hasAttr=%v\n", string(tagName), hasAttr)
-			switch string(tagName){
+			switch string(tagName) {
 			case "span":
 				if hasAttr {
 					// Check if it's an emoji

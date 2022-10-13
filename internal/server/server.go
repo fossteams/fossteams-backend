@@ -6,8 +6,8 @@ import (
 	"github.com/fossteams/fossteams-backend/internal/errors"
 	"github.com/fossteams/fossteams-backend/internal/messages"
 	v1 "github.com/fossteams/fossteams-backend/internal/responses/api/v1"
-	teams_api "github.com/fossteams/teams-api"
-	"github.com/fossteams/teams-api/pkg/csa"
+	teams "github.com/fossteams/teams-api"
+	models "github.com/fossteams/teams-api/pkg/models"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -22,8 +22,10 @@ type Server struct {
 	logger *logrus.Logger
 	cache  *ttlcache.Cache
 	e      *gin.Engine
-	teams  *teams_api.TeamsClient
+	teams  *teams.TeamsClient
 }
+
+const cacheTTL = 300
 
 func (s *Server) setupRoutes() {
 	apiEndpoint := s.e.Group("/api")
@@ -35,9 +37,10 @@ func (s *Server) setupRoutes() {
 func (s *Server) setupApiV1(endpoint *gin.RouterGroup) {
 	endpoint.GET("/conversations", s.v1GetConversations)
 	endpoint.GET("/conversations/:id", s.v1GetSingleConversation)
+	endpoint.GET("/conversations/:id/profilePicture", s.v1GetConversationProfilePicture)
 }
 
-func parseMembers(members []csa.ChatMember) []v1.ChatMember {
+func parseMembers(members []models.ChatMember) []v1.ChatMember {
 	var pMembers []v1.ChatMember
 
 	for _, m := range members {
@@ -51,7 +54,7 @@ func parseMembers(members []csa.ChatMember) []v1.ChatMember {
 	return pMembers
 }
 
-func parseChannels(channels []csa.Channel) []v1.Channel {
+func parseChannels(channels []models.Channel) []v1.Channel {
 	var chans []v1.Channel
 	for _, c := range channels {
 		chans = append(chans, v1.Channel{
@@ -66,7 +69,7 @@ func parseChannels(channels []csa.Channel) []v1.Channel {
 	return chans
 }
 
-func processMessage(message csa.Message) v1.ShortMessage {
+func processMessage(message models.Message) v1.ShortMessage {
 	return v1.ShortMessage{
 		Id:      message.Id,
 		Content: message.Content,
@@ -81,14 +84,14 @@ func New(logger *logrus.Logger) (*Server, error) {
 	}
 
 	engine := gin.Default()
-	teams, err := teams_api.New()
+	teams, err := teams.New()
 
 	if err != nil {
 		return nil, fmt.Errorf("unable to initialize Teams client: %v", err)
 	}
 
 	cache := ttlcache.NewCache()
-	err = cache.SetTTL(30 * time.Second)
+	err = cache.SetTTL(cacheTTL * time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("unable to set ttlcache TTL: %v", err)
 	}
@@ -194,9 +197,9 @@ func (s *Server) v1GetSingleConversation(c *gin.Context) {
 	}
 
 	s.teams.Debug(true)
-	s.teams.ChatSvc().DebugDisallowUnknownFields(true)
+	s.teams.ChatSvc().DebugDisallowUnknownFields(false)
 
-	chatMessages, err := s.teams.GetMessages(&csa.Channel{Id: convId})
+	chatMessages, err := s.teams.GetMessages(&models.Channel{Id: convId})
 	if err != nil {
 		s.logger.Errorf("unable to get messages for convId=%s: %v", convId, err)
 		c.JSON(http.StatusInternalServerError, errors.ApiError{Message: "unable to get messages"})
@@ -215,7 +218,25 @@ func (s *Server) v1GetSingleConversation(c *gin.Context) {
 	return
 }
 
-func (s *Server) parseMessages(msgs []csa.ChatMessage) []v1.Message {
+func (s *Server) v1GetConversationProfilePicture(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "please provide an id"})
+		return
+	}
+
+	buff, err := s.teams.GetTeamsProfilePicture(id)
+	if err != nil {
+		s.logger.Errorf("unable to get profile picture: %v", err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "unable to get profile picture"})
+		return
+	}
+
+	c.Status(http.StatusOK)
+	_, _ = c.Writer.Write(buff)
+}
+
+func (s *Server) parseMessages(msgs []models.ChatMessage) []v1.Message {
 	var pMessages []v1.Message
 	threads := map[string][]v1.Message{}
 	parentMessages := map[string]v1.Message{}
@@ -225,9 +246,10 @@ func (s *Server) parseMessages(msgs []csa.ChatMessage) []v1.Message {
 	for _, m := range msgs {
 		msg := v1.Message{
 			ShortMessage: v1.ShortMessage{
-				Id:      m.Id,
-				Content: messages.ParseMessageContent(m.Content),
-				From:    m.From,
+				Id:           m.Id,
+				CleanContent: messages.ParseMessageContent(m.Content),
+				Content:      m.Content,
+				From:         m.From,
 			},
 			ImDisplayName:       m.ImDisplayName,
 			OriginalArrivalTime: m.OriginalArrivalTime,
@@ -271,7 +293,7 @@ func (s *Server) parseMessages(msgs []csa.ChatMessage) []v1.Message {
 	return pMessages
 }
 
-func parseReactions(emotions []csa.Emotion) map[string]int {
+func parseReactions(emotions []models.Emotion) map[string]int {
 	reactions := map[string]int{}
 	for _, em := range emotions {
 		reactions[strings.ToLower(em.Key)] = len(em.Users)
